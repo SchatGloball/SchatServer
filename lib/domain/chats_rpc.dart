@@ -8,6 +8,7 @@ import 'package:schat_api/data/chat/chat.dart';
 import 'package:schat_api/data/message/message.dart';
 import 'package:schat_api/data/reaction_message/reaction_message.dart';
 import 'package:schat_api/data/user/user.dart';
+import 'package:schat_api/domain/logService.dart';
 import 'package:schat_api/env.dart';
 import 'package:schat_api/generated/chats.pbgrpc.dart';
 import 'package:schat_api/utils.dart';
@@ -96,7 +97,7 @@ class ChatRpc extends ChatsRpcServiceBase {
         String m = jsonEncode(element.first);
         Map<String, dynamic> elementJson = jsonDecode(m);
         for (var link in elementJson['content']) {
-          storage.removeFile(bucket: Env.chatsBucket, name: link);
+          storage.removeFile(bucket: env.chatsBucket, name: link);
         }
       }
 
@@ -124,17 +125,42 @@ class ChatRpc extends ChatsRpcServiceBase {
   Future<ResponseDto> deleteMessage(
       ServiceCall call, MessageDto request) async {
     final int messageId = request.id;
-    final message = await db.messages.queryMessage(messageId);
-    if (message == null) {
-      throw GrpcError.invalidArgument('Error id message');
-    }
-    final id = Utils.getIdFromMetadata(call);
-    if (message.authorId == id) {
-      final MessageView? message = await db.messages.queryMessage(messageId);
-      for (var element in message!.content) {
-        await storage.removeFile(bucket: Env.chatsBucket, name: element);
+final id = Utils.getIdFromMetadata(call);
+
+    final Result listMessages = await db.execute(
+        "SELECT json_build_object('id', messages.id, 'content', messages.content, 'chat', messages.chat_id, 'author', messages.author_id) AS json_data FROM messages WHERE id = '$messageId'");
+        if(listMessages.isEmpty)
+        {
+           throw GrpcError.permissionDenied('error');
+        }
+      String m = jsonEncode(listMessages.first.first);
+      Map<String, dynamic> elementJson = jsonDecode(m);
+      ShortChatView? chat = await db.chats.queryShortView(elementJson['chat']);
+      List<String> contentLink = [];
+      for (var content in elementJson['content']) {
+        contentLink.add(await Utils.getLincToFile(content, false));
       }
+      elementJson['content'] = contentLink;
+    if (elementJson['author'] == id) {
+      for (var element in contentLink) {
+        await storage.removeFile(bucket: env.chatsBucket, name: element);
+      }
+      
       await db.messages.deleteOne(messageId);
+      List <MemberDto> members = [];
+for(String m in chat!.members)
+{
+
+members.add(MemberDto(memberUsername: m, memberImage: ''));
+}
+      _streamControllerEvent.add(UpdateDTO(
+          chat: ChatDto(
+              id: elementJson['chat'],
+              members: members,
+              authorId: chat.authorId,
+              chatImage: '',
+              messages: [MessageDto(id: messageId, authorId: -1, body: '', authorName: '', delivered: false)]
+              )));
       return ResponseDto(message: 'success');
     } else {
       throw GrpcError.permissionDenied('error');
@@ -152,7 +178,7 @@ class ChatRpc extends ChatsRpcServiceBase {
     }
 
     final Result listChats = await db.execute(
-        "SELECT json_build_object('id', chats.id, 'name', chats.name, 'author_id', chats.author_id, 'chat_image', chats.chat_image, 'members', (SELECT json_agg(json_build_object( 'username', users.username, 'image_avatar', users.image_avatar)) FROM users WHERE users.username = ANY(chats.members)), 'id_message', messages.id, 'body', messages.body, 'author_messsage_id', messages.author_id, 'content', messages.content, 'sticker_content', messages.sticker_content, 'chat_id', messages.chat_id, 'date_message', messages.date_message, 'delivered', messages.delivered, 'author_name', messages.author_name, 'forwarded', messages.forwarded, 'original_author', messages.original_author, 'original_date', messages.original_date) AS json_data FROM chats LEFT JOIN (SELECT DISTINCT ON (chat_id) * FROM messages ORDER BY chat_id, id DESC) AS messages ON chats.id = messages.chat_id WHERE '${user.username}' = ANY(chats.members)");
+        "SELECT json_build_object('id', chats.id, 'name', chats.name, 'author_id', chats.author_id, 'chat_image', chats.chat_image, 'members', (SELECT json_agg(json_build_object( 'username', users.username, 'image_avatar', users.image_avatar)) FROM users WHERE users.username = ANY(chats.members)), 'id_message', messages.id, 'body', messages.body, 'author_messsage_id', messages.author_id, 'buttons', messages.button, 'content', messages.content, 'sticker_content', messages.sticker_content, 'chat_id', messages.chat_id, 'date_message', messages.date_message, 'delivered', messages.delivered, 'author_name', messages.author_name, 'forwarded', messages.forwarded, 'original_author', messages.original_author, 'original_date', messages.original_date) AS json_data FROM chats LEFT JOIN (SELECT DISTINCT ON (chat_id) * FROM messages ORDER BY chat_id, id DESC) AS messages ON chats.id = messages.chat_id WHERE '${user.username}' = ANY(chats.members)");
 
     if (listChats.isEmpty) {
       return ListChatsDto(chats: []);
@@ -173,6 +199,7 @@ class ChatRpc extends ChatsRpcServiceBase {
         elementJson['author_name'] = elementJson['author_id'].toString();
         elementJson['sticker_content'] = 0;
         elementJson['body'] = '';
+        elementJson['buttons'] = [];
       }
 
       List<String> contentLink = [];
@@ -270,7 +297,6 @@ class ChatRpc extends ChatsRpcServiceBase {
     final authorId = Utils.getIdFromMetadata(call);
     final String userName = Utils.getUserNameFromMetadata(call);
     final int chatId = request.chatId;
-
     final String messageBody =
         Utils.encryptField(request.body); //Шифруем сообщение
 
@@ -288,7 +314,7 @@ class ChatRpc extends ChatsRpcServiceBase {
     for (int i = 0; i < request.data.length; i++) {
       final String name = '${uuid.v8()}.separated.${request.content[i]}';
       await storage.putFile(
-          bucket: Env.chatsBucket,
+          bucket: env.chatsBucket,
           name: name,
           data: request.data[i] as Uint8List);
       content.add(name);
@@ -305,7 +331,7 @@ class ChatRpc extends ChatsRpcServiceBase {
         originalAuthor: userName,
         originalDate: date,
         forwarded: false,
-        delivered: false));
+        delivered: false, button: Utils.getIsBotFromToken(call)?request.button:[]));
 
     List<String> linkContent = [];
     for (int i = 0; i < content.length; i++) {
@@ -326,6 +352,7 @@ class ChatRpc extends ChatsRpcServiceBase {
         forwarded: false,
         originalAuthor: userName,
         originalDate: date.toString(),
+        button: Utils.getIsBotFromToken(call)?request.button:[],
         reaction: []));
     _streamControllerEvent.add(UpdateDTO(chat: chat));
     return ResponseDto(message: 'success');
@@ -336,11 +363,6 @@ class ChatRpc extends ChatsRpcServiceBase {
     final id = Utils.getIdFromMetadata(call);
 
     final user = await db.users.queryUser(id);
-    // yield* _streamControllerEvent.stream
-    //     .where((event) => event.chats.members.contains(MemberDto(
-    //           memberUsername: user!.username,
-    //         )));
-
     yield* _streamControllerEvent.stream.where((event) => event.chat.members
         .any((member) => member.memberUsername == user!.username));
   }
@@ -389,10 +411,10 @@ class ChatRpc extends ChatsRpcServiceBase {
 
     if (request.image.isNotEmpty) {
       await storage.removeFile(
-          bucket: Env.usersBucket, name: oldChat.chatImage);
+          bucket: env.usersBucket, name: oldChat.chatImage);
       imageName = uuid.v8();
       await storage.putFile(
-          bucket: Env.usersBucket,
+          bucket: env.usersBucket,
           name: imageName,
           data: request.image as Uint8List);
     }
@@ -421,7 +443,7 @@ class ChatRpc extends ChatsRpcServiceBase {
 
   @override
   Future<UpdateAppRes> updateApp(ServiceCall call, UpdateAppReq request) async {
-    if (request.version == Env.version) {
+    if (request.version == env.version) {
       throw GrpcError.invalidArgument('Error update');
     } else {
       Directory directory = Directory('./clientRepo');
@@ -449,6 +471,7 @@ class ChatRpc extends ChatsRpcServiceBase {
   Future<ResponseDto> notification(ServiceCall call, RequestDto request) async {
     final id = Utils.getIdFromMetadata(call);
     final user = await db.users.queryUser(id);
+    createNewLog('notification', id, false);
     final Result listChats = await db.execute(
         "SELECT json_build_object('id_message', messages.id, 'author_messsage_id', messages.author_id, 'chat_id', messages.chat_id, 'delivered', messages.delivered) AS json_data FROM chats LEFT JOIN (SELECT DISTINCT ON (chat_id) * FROM messages ORDER BY chat_id,  id desc) AS messages ON chats.id = messages.chat_id WHERE '${user!.username}' = ANY(chats.members) AND messages.delivered = false and messages.author_id != '$id'");
     if (listChats.isEmpty) {
@@ -554,7 +577,7 @@ class ChatRpc extends ChatsRpcServiceBase {
           delivered: false,
           originalAuthor: messageOne.authorName,
           originalDate: messageOne.originalDate,
-          chatId: chat.id));
+          chatId: chat.id, button: []));
     }
     List<int> forwardedMessageId =
         await db.messages.insertMany(requestsMessages);
@@ -622,6 +645,11 @@ class ChatRpc extends ChatsRpcServiceBase {
             MessageUpdateRequest(id: messageFinal.id, delivered: true));
         delivered = true;
       }
+       if (messageFinal.delivered) {
+        await db.messages.updateOne(
+            MessageUpdateRequest(id: messageFinal.id, delivered: false));
+        delivered = false;
+      }
 
       List<String> linkContent = [];
 
@@ -647,7 +675,9 @@ class ChatRpc extends ChatsRpcServiceBase {
           forwarded: messageFinal.forwarded,
           originalAuthor: messageFinal.originalAuthor,
           originalDate: messageFinal.originalDate.toString(),
-          reaction: reactions));
+          reaction: reactions,
+          button: messageFinal.button
+          ));
 
       _streamControllerEvent.add(UpdateDTO(chat: chatUpdate));
     } else {

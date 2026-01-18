@@ -11,10 +11,10 @@ final class MinioStorage implements IStorage {
 
   MinioStorage() {
     minio = Minio(
-        port: Env.storagePort,
-        endPoint: Env().storageHost,
-        accessKey: Env().minioLogin,
-        secretKey: Env().minioPassword,
+        port: env.storagePort,
+        endPoint: env.storageHost,
+        accessKey: env.minioLogin,
+        secretKey: env.minioPassword,
         useSSL: false);
   }
 

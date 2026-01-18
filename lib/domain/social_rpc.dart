@@ -45,7 +45,7 @@ class SocialRpc extends SocialRpcServiceBase {
     if (request.image.isNotEmpty) {
       nameImage = uuid.v8();
       await storage.putFile(
-          bucket: Env.chatsBucket,
+          bucket: env.chatsBucket,
           name: nameImage,
           data: request.image as Uint8List);
     }
@@ -73,7 +73,7 @@ class SocialRpc extends SocialRpcServiceBase {
     for (int i = 0; i < request.data.length; i++) {
       final String name = '${uuid.v8()}.separated.${request.content[i]}';
       await storage.putFile(
-          bucket: Env.chatsBucket,
+          bucket: env.chatsBucket,
           name: name,
           data: request.data[i] as Uint8List);
       content.add(name);
@@ -123,7 +123,7 @@ class SocialRpc extends SocialRpcServiceBase {
     for (int i = 0; i < request.data.length; i++) {
       final String name = '${uuid.v8()}.separated.${request.content[i]}';
       await storage.putFile(
-          bucket: Env.chatsBucket,
+          bucket: env.chatsBucket,
           name: name,
           data: request.data[i] as Uint8List);
       content.add(name);
@@ -157,17 +157,17 @@ class SocialRpc extends SocialRpcServiceBase {
 
     for (PostView p in channel.posts) {
       for (String l in p.content) {
-        await storage.removeFile(bucket: Env.chatsBucket, name: l);
+        await storage.removeFile(bucket: env.chatsBucket, name: l);
       }
       for (CommentView comment in p.comment) {
         for (String linck in comment.content) {
-          await storage.removeFile(bucket: Env.chatsBucket, name: linck);
+          await storage.removeFile(bucket: env.chatsBucket, name: linck);
         }
       }
     }
     if (channel.channelImage.isNotEmpty) {
       await storage.removeFile(
-          bucket: Env.chatsBucket, name: channel.channelImage);
+          bucket: env.chatsBucket, name: channel.channelImage);
     }
 
     await db.channelGroups.deleteOne(channel.id);
@@ -205,11 +205,11 @@ class SocialRpc extends SocialRpcServiceBase {
     }
 
     for (String l in post.content) {
-      await storage.removeFile(bucket: Env.chatsBucket, name: l);
+      await storage.removeFile(bucket: env.chatsBucket, name: l);
     }
     for (CommentView comment in post.comment) {
       for (String linck in comment.content) {
-        await storage.removeFile(bucket: Env.chatsBucket, name: linck);
+        await storage.removeFile(bucket: env.chatsBucket, name: linck);
       }
     }
     await db.posts.deleteOne(post.id);
@@ -232,7 +232,7 @@ class SocialRpc extends SocialRpcServiceBase {
     if (request.image.isNotEmpty) {
       image = uuid.v8();
       await storage.putFile(
-          bucket: Env.chatsBucket,
+          bucket: env.chatsBucket,
           name: image,
           data: request.image as Uint8List);
     }
@@ -361,6 +361,8 @@ WHERE channel_group_id = '${request.id}' AND topik = '$oldTopik';""");
       }
 
       List<PostDto> posts = [];
+
+
       if (elementJson['id_post'] != -1) {
         posts.add(PostDto(
           id: elementJson['id_post'],
@@ -371,11 +373,22 @@ WHERE channel_group_id = '${request.id}' AND topik = '$oldTopik';""");
           stickerContent: elementJson['sticker_content'],
           tags: [],
           topik: elementJson['topik'],
-          likes: [],
+          likes: [], 
           comments: [],
           authorName: elementJson['author_post_name'],
+          datePost: elementJson['date_message']
         ));
       }
+            posts.sort((a, b)=> b.id.compareTo(a.id));
+for(PostDto p in posts)
+{
+    int indexOfGeneral = topiks.indexWhere((element) => element == p.topik);
+  if (indexOfGeneral != -1 && indexOfGeneral > 0) { // проверяем наличие элемента и его положение
+    topiks.removeAt(indexOfGeneral);          // удаляем элемент с его старой позиции
+    topiks.insert(0, p.topik);             // вставляем элемент на первое место
+}
+}
+
       channelsList.add(ChannelDto(
           id: elementJson['id'],
           name: elementJson['name'],
@@ -384,7 +397,7 @@ WHERE channel_group_id = '${request.id}' AND topik = '$oldTopik';""");
           members: members,
           tags: tags,
           topik: topiks,
-          posts: posts));
+          posts: []));
     }
     return ListChannelsDto(channels: channelsList);
   }
@@ -548,7 +561,9 @@ WHERE id = '${request.id}';""");
           String l = await Utils.getLincToFile(link, false);
           commentContent.add(l);
         }
+        comments.add(CommentDto(id: c.id, body: c.body, authorId: c.authorId, postId: p.id, authorName: c.authorName, content: commentContent, stickerContent: c.stickerContent, likes: c.likes, dateComment: c.dateComment.toString()));
       }
+
       postsRes.add(PostDto(
           id: p.id,
           body: p.body,

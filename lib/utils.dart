@@ -19,12 +19,12 @@ final MinioStorage storage = MinioStorage();
 class Utils {
   static String getHastPasswors(String password) {
     //солим пароль
-    final bytes = utf8.encode(password + Env().sk);
+    final bytes = utf8.encode(password + env.sk);
     return sha256.convert(bytes).toString();
   }
 
   static String encryptField(String value, {bool isDecode = false}) {
-    var xor = Xor(Env().sk);
+    var xor = Xor(env.sk);
     if (isDecode) {
       return xor.decode(value);
     } else {
@@ -34,7 +34,7 @@ class Utils {
 
   static int getIdFromToken(String token) {
     //получаем id пользователя по токену
-    final JwtClaim = verifyJwtHS256Signature(token, Env().sk);
+    final JwtClaim = verifyJwtHS256Signature(token, env.sk);
     final id = int.tryParse(JwtClaim['user_id']);
     if (id == null) {
       throw GrpcError.dataLoss("Error user id");
@@ -47,21 +47,27 @@ class Utils {
     return getIdFromToken(accessToken);
   }
 
+ static bool getIsBotFromToken(ServiceCall serviceCall) {
+  final token = serviceCall.clientMetadata?['access_token'] ?? '';
+    final JwtClaim = verifyJwtHS256Signature(token, env.sk);
+    return JwtClaim['isBot'];
+  }
+
   static String getUserNameFromMetadata(ServiceCall serviceCall) {
     final accessToken = serviceCall.clientMetadata?['access_token'] ?? '';
-    final JwtClaim = verifyJwtHS256Signature(accessToken, Env().sk);
+    final JwtClaim = verifyJwtHS256Signature(accessToken, env.sk);
     return JwtClaim['user_name'];
   }
 
   static UserDto convertUserDto(UserView user, String imageLink) {
     //отдаём информацио о пользователе
     return UserDto(
-        id: user.id, username: user.username, imageAvatar: imageLink);
+        id: user.id, username: user.username, imageAvatar: imageLink, isBot: user.isBot);
   }
 
   static Future<String> getLincToFile(String name, bool isUserAvatar) async {
     String link = await storage.getFile(
-        bucket: isUserAvatar ? Env.usersBucket : Env.chatsBucket, name: name);
+        bucket: isUserAvatar ? env.usersBucket : env.chatsBucket, name: name);
     return link;
   }
 
@@ -96,6 +102,11 @@ class Utils {
               memberUsername: elementMember['username'],
               memberImage: elementMember['image_avatar']));
         }
+
+                List<String> buttons = [];
+for (var button in element['buttons']) {
+          buttons.add(button.toString());
+        }
         response.chats.add(ChatDto(
             id: element['id'],
             name: element['name'],
@@ -116,6 +127,8 @@ class Utils {
                 dateMessage: element['date_message'].toString(),
                 delivered: element['delivered'] ?? false,
                 authorName: element['author_name'].toString(),
+                button: buttons,
+
               )
             ]));
       }
@@ -172,7 +185,9 @@ class Utils {
         forwarded: message.forwarded,
         originalAuthor: message.originalAuthor,
         originalDate: message.originalDate.toString(),
-        reaction: reactions);
+        reaction: reactions,
+        button: message.button
+        );
   }
 
   static List<ReactionMessageDto> parseReactions(

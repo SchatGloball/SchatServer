@@ -4,8 +4,8 @@ import 'dart:typed_data';
 import 'package:grpc/grpc.dart';
 import 'package:jaguar_jwt/jaguar_jwt.dart';
 import 'package:schat_api/data/user/user.dart';
+import 'package:schat_api/domain/logService.dart';
 import 'package:schat_api/generated/auth.pbgrpc.dart';
-import 'package:schat_api/schat_api.dart';
 import 'package:schat_api/utils.dart';
 import 'package:stormberry/stormberry.dart';
 import 'package:uuid/uuid.dart';
@@ -26,6 +26,7 @@ class AuthRpc extends AuthRpcServiceBase {
   @override
   Future<UserDto> fetchUser(ServiceCall call, RequestDto request) async {
     final id = Utils.getIdFromMetadata(call);
+    createNewLog('fetchUser', id, false);
     final user = await db.users.queryUser(id);
     String linkImage = '';
     if (user == null) {
@@ -49,7 +50,7 @@ class AuthRpc extends AuthRpcServiceBase {
     if (user == null) {
       throw GrpcError.notFound('User not found');
     }
-    return _createTokens(user.id.toString(), user.username);
+    return _createTokens(user.id.toString(), user.username, user.isBot);
   }
 
   @override
@@ -73,7 +74,7 @@ class AuthRpc extends AuthRpcServiceBase {
       throw GrpcError.unimplemented("Password wrong");
     }
 
-    return _createTokens(user.id.toString(), user.username);
+    return _createTokens(user.id.toString(), user.username, user.isBot);
   }
 
   @override
@@ -102,11 +103,12 @@ class AuthRpc extends AuthRpcServiceBase {
           email: Utils.getHastPasswors(request.email),
           password: Utils.getHastPasswors(request.password),
           imageAvatar: '',
-          isBot: false,
+          isBot: request.isBot,
           nameCreator: ''),
     );
+    
 
-    return _createTokens(id.toString(), request.username);
+    return _createTokens(id.toString(), request.username, request.isBot);
   }
 
   @override
@@ -134,18 +136,18 @@ class AuthRpc extends AuthRpcServiceBase {
     return Utils.convertUserDto(user, linkImage);
   }
 
-  TokensDto _createTokens(String id, String userName) {
+  TokensDto _createTokens(String id, String userName, bool isBot) {
     final accessTokenSet = JwtClaim(
-        maxAge: Duration(hours: Env.accessTokenLife),
-        otherClaims: {'user_id': id, 'user_name': userName});
+        maxAge: Duration(days: env.accessTokenLife),
+        otherClaims: {'user_id': id, 'user_name': userName, 'isBot': isBot});
 
     final refreshTokenSet = JwtClaim(
-        maxAge: Duration(hours: Env.refreshTokenLife),
+        maxAge: Duration(days: env.refreshTokenLife),
         otherClaims: {'user_id': id});
 
     return TokensDto(
-        accessToken: issueJwtHS256(accessTokenSet, Env().sk),
-        refreshToken: issueJwtHS256(refreshTokenSet, Env().sk));
+        accessToken: issueJwtHS256(accessTokenSet, env.sk),
+        refreshToken: issueJwtHS256(refreshTokenSet, env.sk));
   }
 
   @override
@@ -180,17 +182,23 @@ class AuthRpc extends AuthRpcServiceBase {
     }
     if (user.imageAvatar != '') {
       final removeName = user.imageAvatar
-          .split('/${Env.usersBucket}/')
+          .split('/${env.usersBucket}/')
           .last
           .split('?X-Amz-')[0];
-      await storage.removeFile(bucket: Env.usersBucket, name: removeName);
+      await storage.removeFile(bucket: env.usersBucket, name: removeName);
     }
     final String name = uuid.v8();
     await storage.putFile(
-        bucket: Env.usersBucket, name: name, data: request.data as Uint8List);
+        bucket: env.usersBucket, name: name, data: request.data as Uint8List);
     final String link =
-        await storage.getFile(bucket: Env.usersBucket, name: name);
+        await storage.getFile(bucket: env.usersBucket, name: name);
     await db.users.updateOne(UserUpdateRequest(id: id, imageAvatar: name));
     return ResponseDto(message: link);
+  }
+
+
+  @override
+  Future<ResponseDto> serverInfo(ServiceCall call, RequestDto request) async{
+    return ResponseDto(message: '${env.version}');
   }
 }

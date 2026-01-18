@@ -11,6 +11,7 @@ abstract class Message {
   String get body;
   int get authorId;
   List<String> get content;
+  List<String> get button;
   String get authorName;
   int get stickerContent;
   DateTime get dateMessage;

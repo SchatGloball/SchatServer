@@ -2,11 +2,10 @@ import 'dart:async';
 import 'package:grpc/grpc.dart';
 import 'package:schat_api/data/db.dart';
 import 'package:schat_api/data/grpc_interceptors.dart';
-import 'package:schat_api/data/migration.dart';
-import 'package:schat_api/data/minio_storage.dart';
 import 'package:schat_api/domain/auth_rpc.dart';
 import 'package:schat_api/domain/calls_rpc.dart';
 import 'package:schat_api/domain/chats_rpc.dart';
+import 'package:schat_api/domain/logService.dart';
 import 'package:schat_api/domain/social_rpc.dart';
 import 'package:schat_api/env.dart';
 
@@ -14,20 +13,30 @@ import 'package:schat_api/env.dart';
 
 Future<void> startServer() async {
   runZonedGuarded(() async {
-    final serverAPI = Server([
+    final serverAPI = Server.create(services: [
       AuthRpc(),
       ChatRpc(),
       SocialRpc(),
       CallRpc()
-    ], <Interceptor>[
+    ], interceptors: [
       GrpcInterceptors.tokenInterceptor,
-    ], CodecRegistry(codecs: [GzipCodec()]));
-    await serverAPI.serve(port: Env().port);
+    ], 
+    codecRegistry: CodecRegistry(codecs: [GzipCodec()]), 
+    keepAliveOptions: ServerKeepAliveOptions(
+      minIntervalBetweenPingsWithoutData: Duration(seconds: 30),
+      maxBadPings: 3
+    ),
+   errorHandler: (error, trace) => createNewLog(error.toString() + trace.toString(), 0, true)
+    );
+    await serverAPI.serve(port: env.port, 
+    backlog: 128,
+        shared: false,  
+        );
     print("server started");
     try {
       await Future.delayed(Duration(seconds: 10));
-      print(Env().dbPort);
-      print(Env().dbHost);
+      print(env.dbPort);
+      print(env.dbHost);
       db = await initDatabase();
       //    await startMigration();
     } catch (e) {

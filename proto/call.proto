@@ -43,9 +43,7 @@ message UserDto {
     }
     message CallDto
     {
-        bytes soundData = 1;  
-        bytes videoData = 2; 
+        repeated int32 soundData = 1;
+        repeated int32 videoData  = 2;
+        
     }
-
-
-

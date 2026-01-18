@@ -34,7 +34,9 @@ services:
       DB_SK: ${db_sk_auth}
       STORAGEHOST: ${whiteIP}
       ACCESS_TOKEN_LIFE: 100
-      REFRESH_TOKEN_LIFE: 200 
+      REFRESH_TOKEN_LIFE: 200
+      LOGLEVEL: ${logLevel}
+      MAXLOGSTRING: ${maxLogString} 
   db:
     container_name: db
     restart: always

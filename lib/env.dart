@@ -2,8 +2,8 @@ import 'dart:io';
 
 class Env {
   final String sk =  Platform.environment['DB_SK'] ??'*************************';  
-  static const int accessTokenLife = 5;
-  static const int refreshTokenLife = 10;
+final  int accessTokenLife = 500;
+   final int refreshTokenLife = 1000;
   final String dbHost = Platform.environment['DB_HOST_ADDRESS'] ?? 'localhost';
   final int dbPort =
       int.parse(Platform.environment['DB_PORT'] ?? '5432'.toString());
@@ -12,13 +12,16 @@ class Env {
 
   final int port = int.parse(Platform.environment['PORT'] ?? '4700');
 
-  static const int storagePort = 9000;
+  final int storagePort = 9000;
   final String minioLogin =
       Platform.environment['MINIO_ROOT_USER'] ?? '******************';
   final String minioPassword =
       Platform.environment['MINIO_ROOT_PASSWORD'] ?? '******************';
   final String storageHost = Platform.environment['STORAGEHOST'] ?? '0.0.0.0';
-  static const String chatsBucket = 'userchats';
-  static const String usersBucket = 'useravatars';
-  static const int version = 1;
+  final String chatsBucket = 'userchats';
+  final String usersBucket = 'useravatars';
+  final int version = 2;
+    final int logLevel =  int.parse(Platform.environment['LOGLEVEL'] ?? '0');
+  final int maxLogString =  int.parse(Platform.environment['MAXLOGSTRING'] ?? '1024');
 }
+final Env env = Env();

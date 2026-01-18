@@ -9,10 +9,10 @@ environment:
 
 # Add regular dependencies here.
 dependencies:
-  grpc: ^4.0.4
-  protobuf: ^4.1.0
-  protoc_plugin: ^22.2.0
-  stormberry: ^0.14.0
+  grpc: ^5.1.0
+  protobuf: ^6.0.0
+  protoc_plugin: ^25.0.0
+  stormberry: ^0.18.0
   jaguar_jwt: ^3.0.0
   crypto: ^3.0.6
   minio: ^3.5.0

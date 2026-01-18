@@ -6,11 +6,11 @@ late Connection db;
 
 Future<Connection> initDatabase() async => await Connection.open(
       Endpoint(
-        port: Env().dbPort,
-        password:  Env().dbPass,
-        username: Env().dbUser,
+        port: env.dbPort,
+        password:  env.dbPass,
+        username: env.dbUser,
         database: 'schat',
-        host: Env().dbHost,
+        host: env.dbHost,
       ),
       settings: ConnectionSettings(
         sslMode: SslMode.disable,

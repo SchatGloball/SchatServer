@@ -1,4 +1,4 @@
-FROM dart:3.8.1 as builder
+FROM dart:3.10.6 as builder
 WORKDIR /app
 COPY . .
 RUN dart pub get
